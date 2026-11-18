@@ -1,0 +1,1 @@
+{"name": "Tủ truyện · Đọc & Nghe", "short_name": "Tủ truyện", "lang": "vi", "start_url": "./", "scope": "./", "display": "standalone", "background_color": "#f6f3ee", "theme_color": "#752f45", "icons": [{"src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}], "orientation": "portrait"}

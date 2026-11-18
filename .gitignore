@@ -1,0 +1,8 @@
+node_modules/
+.openai/
+tmp/
+__pycache__/
+*.log
+output/
+*.part.mp3
+catalog.pending.json

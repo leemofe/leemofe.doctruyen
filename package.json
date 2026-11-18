@@ -1,0 +1,11 @@
+{
+  "name": "hoa-son-doc-nghe",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "python scripts/serve_app.py",
+    "check": "node --check dist/app.js && node --check dist/audio-player.js && node --check dist/bookshelf.js && node --check dist/book-store.js && node --check dist/sw.js",
+    "import": "python scripts/import_library.py"
+  }
+}
