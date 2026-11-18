@@ -104,3 +104,7 @@ html,body,main,#book-view{overflow-anchor:none}
 .audio-timeline input:disabled{opacity:.4}
 
 .book-source{display:inline-flex;align-items:center;min-height:44px;color:var(--plum)}
+
+.audio-toc-tools .search{margin-bottom:12px}.audio-filters{display:flex;gap:6px;margin:0 0 12px}.audio-filters .filter{flex:1;font-size:11px;padding:8px 5px;min-height:44px}
+.audio-range{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0 14px;border-bottom:1px solid var(--line);margin-bottom:8px;color:var(--muted);font-size:10px}.audio-range label{display:flex;align-items:center;gap:6px}.audio-range select{min-height:40px;max-width:120px;font-size:12px;background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:5px}
+#track-list{max-height:390px;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--line) transparent}.track-row{gap:0;padding:0 5px}.track-open{display:flex;align-items:center;gap:12px;flex:1;min-width:0;min-height:70px;text-align:left;padding:12px 4px}.track-open>span:last-child{min-width:0;flex:1}.track-open strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.audio-mark{width:44px;min-width:44px;height:44px;color:var(--plum);font-size:21px}.no-recording .track-number{opacity:.7}.no-recording small{font-style:italic}#audio-toc-choice{padding:10px;background:var(--soft);border-radius:5px}

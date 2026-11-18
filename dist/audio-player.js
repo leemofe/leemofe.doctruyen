@@ -2,14 +2,23 @@ import {storedTracks,saveTrack} from './book-store.js';
 const $=id=>document.getElementById(id);
 export function formatTime(seconds){seconds=Math.max(0,Math.floor(Number(seconds)||0));const h=Math.floor(seconds/3600),m=Math.floor(seconds%3600/60),s=seconds%60;return (h?h+':':'')+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');}
 export function parseTime(value){const parts=value.trim().split(':');if(!parts.length||parts.length>3||parts.some(p=>!/^\d+$/.test(p)))return null;const numbers=parts.map(Number);if(parts.length>1&&numbers.at(-1)>59||parts.length===3&&numbers[1]>59)return null;return numbers.reduce((total,part)=>total*60+part,0);}
+const searchKey=value=>String(value).toLocaleLowerCase('vi').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d');
+export function filterAudioChapters(chapters,tracks,{query='',range='all',filter='all',bookmarks=[]}={}){
+  const entries=new Map(chapters.map(chapter=>[chapter.number,{...chapter,track:null}]));
+  tracks.forEach(track=>entries.set(track.number,{...entries.get(track.number),number:track.number,title:entries.get(track.number)?.title||track.title,track}));
+  const key=searchKey(query.trim()),saved=new Set(bookmarks);
+  return [...entries.values()].sort((a,b)=>a.number-b.number).filter(entry=>(range==='all'||Math.floor(entry.number/100)*100===Number(range))&&(filter!=='ready'||entry.track)&&(filter!=='saved'||saved.has(entry.number))&&(!key||String(entry.number).includes(key)||searchKey(entry.title).includes(key)||searchKey(entry.track?.title||'').includes(key)));
+}
 export function createAudioPlayer({toast,getText}){
   const audio=$('recording');let book=null,chapters=[],tracks=[],selected=null,sequence=0,restoring=false,progress={positions:{}},timer=null,deadline=0,lastSave=0,service=false;
+  let tocFilter='all',tocLimit=60,requestedChapter=null;
   const pending=new Map();
+  function saveProgress(){if(book)try{localStorage.setItem('ke-chuyen-audio-'+book.id,JSON.stringify(progress));}catch{}}
   function persist(force=false){
     if(!book||!selected||restoring||!Number.isFinite(audio.currentTime))return;
     if(!force&&Date.now()-lastSave<1000)return;lastSave=Date.now();
     progress.last=selected.number;progress.positions[selected.number]=audio.currentTime;
-    try{localStorage.setItem('ke-chuyen-audio-'+book.id,JSON.stringify(progress));}catch{}
+    saveProgress();
   }
   function update(){
     const ready=selected&&Number.isFinite(audio.duration)&&audio.duration>0;
@@ -29,15 +38,35 @@ export function createAudioPlayer({toast,getText}){
   }
   function renderTrackSelection(){document.querySelectorAll('.track-row').forEach(row=>{const active=+row.dataset.number===selected?.number;row.classList.toggle('selected',active);row.setAttribute('aria-current',active?'true':'false');});}
   function render(){
-    $('audio-count').textContent=tracks.length+' bản';$('track-list').replaceChildren();
-    for(const track of tracks){const row=document.createElement('button');row.className='track-row';row.dataset.number=track.number;
-      const icon=document.createElement('span');icon.className='track-number';icon.textContent=String(track.number).padStart(3,'0');
-      const copy=document.createElement('span');const title=document.createElement('strong');title.textContent=track.title;
-      const detail=document.createElement('small');detail.textContent=(track.duration?formatTime(track.duration)+' · ':'')+(track.voice||'File trên thiết bị');copy.append(title,detail);row.append(icon,copy);row.onclick=()=>select(track,false);$('track-list').append(row);
+    const all=filterAudioChapters(chapters,tracks),results=filterAudioChapters(chapters,tracks,{query:$('audio-search').value,range:$('audio-range').value,filter:tocFilter,bookmarks:progress.bookmarks});
+    $('audio-count').textContent=tracks.length+' bản thu';$('track-list').replaceChildren();
+    $('audio-results').textContent=`${Math.min(tocLimit,results.length)}/${results.length} chương`;
+    for(const entry of results.slice(0,tocLimit)){
+      const track=entry.track,row=document.createElement('div');row.className='track-row'+(track?'':' no-recording');row.dataset.number=entry.number;
+      const open=document.createElement('button');open.className='track-open';
+      const icon=document.createElement('span');icon.className='track-number';icon.textContent=String(entry.number).padStart(3,'0');
+      const copy=document.createElement('span');const title=document.createElement('strong');title.textContent=track?.title||entry.title;
+      const detail=document.createElement('small');detail.textContent=track?((track.duration?formatTime(track.duration)+' · ':'')+(track.voice||'File trên thiết bị')):'Chưa có bản thu';
+      copy.append(title,detail);open.append(icon,copy);open.onclick=()=>{
+        requestedChapter=entry.number;
+        if(track){$('audio-toc-choice').hidden=true;select(track,false);}
+        else{
+          $('generate-chapter').value=String(entry.number);showJob();$('audio-toc-choice').hidden=false;
+          $('audio-toc-choice').textContent=`Chương ${entry.number} chưa có bản thu. Bạn có thể thêm MP3/M4A${service&&!entry.error?' hoặc tạo bản thu bên dưới':''}.`;
+        }
+      };
+      const mark=document.createElement('button');mark.className='audio-mark';const marked=(progress.bookmarks||[]).includes(entry.number);
+      mark.textContent=marked?'♥':'♡';mark.setAttribute('aria-label',`Đánh dấu chương nghe ${entry.number}`);mark.setAttribute('aria-pressed',marked);
+      mark.onclick=()=>{const saved=new Set(progress.bookmarks||[]);if(saved.has(entry.number))saved.delete(entry.number);else saved.add(entry.number);progress.bookmarks=[...saved];saveProgress();render();};
+      row.append(open,mark);$('track-list').append(row);
     }
-    if(!tracks.length){const p=document.createElement('p');p.className='empty';p.textContent='Truyện này chưa có bản thu âm. Phần chữ vẫn đọc bình thường.';$('track-list').append(p);}
+    $('audio-more').hidden=tocLimit>=results.length;
+    if(!results.length){const p=document.createElement('p');p.className='empty';p.textContent=!all.length?'Truyện này chưa có chương hoặc bản thu.':tocFilter==='saved'?'Chưa có chương được đánh dấu phù hợp với bộ lọc.':tocFilter==='ready'?'Chưa có bản thu phù hợp với bộ lọc.':'Không tìm thấy chương phù hợp.';$('track-list').append(p);}
     renderTrackSelection();
   }
+  function refreshRanges(){const previous=$('audio-range').value;$('audio-range').replaceChildren(new Option('Mọi chương','all'));[...new Set([...chapters,...tracks].map(c=>Math.floor(c.number/100)*100))].sort((a,b)=>a-b).forEach(number=>$('audio-range').add(new Option(`${number}–${number+99}`,String(number))));if([...$('audio-range').options].some(o=>o.value===previous))$('audio-range').value=previous;}
+  $('audio-search').oninput=()=>{tocLimit=60;render();};$('audio-range').onchange=()=>{tocLimit=60;render();};$('audio-more').onclick=()=>{tocLimit+=60;render();};
+  document.querySelectorAll('[data-audio-filter]').forEach(button=>button.onclick=()=>{tocFilter=button.dataset.audioFilter;tocLimit=60;document.querySelectorAll('[data-audio-filter]').forEach(b=>{b.classList.toggle('active',b===button);b.setAttribute('aria-pressed',b===button);});render();});
   function select(track,autoplay=false){
     persist(true);restoring=true;audio.pause();selected=track;
     $('audio-status').textContent='Đang mở bản thu…';audio.src=track.url;audio.load();
@@ -64,7 +93,7 @@ export function createAudioPlayer({toast,getText}){
   $('audio-sleep').onchange=()=>{clearTimeout(timer);const minutes=+$('audio-sleep').value;deadline=minutes?Date.now()+minutes*60000:0;if(minutes)timer=setTimeout(expire,minutes*60000);toast(minutes?`Hẹn dừng sau ${minutes} phút. Khi khóa máy, hẹn giờ có thể trễ tùy iOS.`:'Đã tắt hẹn giờ.');};
   if('mediaSession' in navigator){for(const [action,handler] of Object.entries({play,pause:()=>audio.pause(),seekbackward:detail=>seek(audio.currentTime-(detail.seekOffset||15)),seekforward:detail=>seek(audio.currentTime+(detail.seekOffset||15)),seekto:detail=>seek(detail.seekTime),previoustrack:()=>{const previous=tracks[tracks.findIndex(t=>t===selected)-1];if(previous)select(previous,true);},nexttrack:()=>{const next=tracks[tracks.findIndex(t=>t===selected)+1];if(next)select(next,true);}}))try{navigator.mediaSession.setActionHandler(action,handler);}catch{}}
   window.addEventListener('pagehide',()=>persist(true));document.addEventListener('visibilitychange',()=>{persist(true);expire();});
-  $('add-recording').onclick=()=>{if(!book)return;$('recording-form').reset();$('recording-number').value=selected?.number||chapters[0]?.number||1;$('recording-name').value=chapters.find(c=>c.number===+$('recording-number').value)?.title||'Chương '+$('recording-number').value;$('recording-error').hidden=true;$('recording-dialog').showModal();};
+  $('add-recording').onclick=()=>{if(!book)return;$('recording-form').reset();$('recording-number').value=requestedChapter||selected?.number||chapters[0]?.number||1;$('recording-name').value=chapters.find(c=>c.number===+$('recording-number').value)?.title||'Chương '+$('recording-number').value;$('recording-error').hidden=true;$('recording-dialog').showModal();};
   $('close-recording-dialog').onclick=()=>$('recording-dialog').close();
   $('recording-form').onsubmit=async event=>{
     event.preventDefault();const button=$('save-recording');button.disabled=true;
@@ -84,10 +113,11 @@ export function createAudioPlayer({toast,getText}){
     if(results[0].status==='fulfilled')hosted=results[0].value;if(results[1].status==='fulfilled')local=results[1].value;
     persist(true);restoring=true;audio.pause();audio.removeAttribute('src');audio.load();tracks.filter(t=>t.objectURL).forEach(t=>URL.revokeObjectURL(t.url));
     const merged=new Map(hosted.map(track=>[track.number,track]));local.forEach(track=>merged.set(track.number,{...track,url:URL.createObjectURL(track.blob),objectURL:true}));
-    tracks=[...merged.values()].sort((a,b)=>a.number-b.number);selected=null;restoring=false;render();
+    tracks=[...merged.values()].sort((a,b)=>a.number-b.number);selected=null;restoring=false;refreshRanges();render();
     const first=tracks.find(t=>t.number===preferred)||tracks.find(t=>t.number===progress.last)||tracks[0];if(first)select(first);else update();
   }
-  function showJob(){const job=pending.get(book?.id);$('generate-recording').disabled=!!job;$('generation-status').textContent=job?job.message:'';}
+  function showJob(){const job=pending.get(book?.id);$('generate-recording').disabled=!!job||!$('generate-chapter').value;$('generation-status').textContent=job?job.message:'';}
+  $('generate-chapter').onchange=()=>{requestedChapter=+$('generate-chapter').value||null;showJob();};
   async function generate(){
     if(!book)return;const targetBook=book,number=+$('generate-chapter').value;
     $('generate-recording').disabled=true;
@@ -105,7 +135,8 @@ export function createAudioPlayer({toast,getText}){
   }
   $('generate-recording').onclick=generate;
   async function openBook(nextBook,nextChapters){
-    stop();sequence++;book=nextBook;chapters=nextChapters;
+    stop();sequence++;book=nextBook;chapters=nextChapters;requestedChapter=null;tocFilter='all';tocLimit=60;$('audio-search').value='';$('audio-range').value='all';$('audio-toc-choice').hidden=true;
+    document.querySelectorAll('[data-audio-filter]').forEach(b=>{b.classList.toggle('active',b.dataset.audioFilter==='all');b.setAttribute('aria-pressed',b.dataset.audioFilter==='all');});
     try{progress=JSON.parse(localStorage.getItem('ke-chuyen-audio-'+book.id)||'{"positions":{}}');}catch{progress={positions:{}};}progress.positions||={};
     $('generate-chapter').replaceChildren();chapters.filter(c=>!c.error).forEach(c=>$('generate-chapter').add(new Option(c.title,String(c.number))));
     $('generate-chapter').disabled=!$('generate-chapter').options.length;

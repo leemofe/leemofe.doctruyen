@@ -1,4 +1,4 @@
-const VERSION='ke-chuyen-v5';
+const VERSION='ke-chuyen-v6';
 self.addEventListener('install',event=>{event.waitUntil(caches.open(VERSION).then(cache=>cache.addAll(['./','./index.html','./style.css','./app.js','./audio-player.js','./bookshelf.js','./book-store.js','./books.json','./icon.svg','./manifest.webmanifest','./catalog.json'])));self.skipWaiting();});
 self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
 self.addEventListener('message',event=>{if(event.data?.type==='CACHE_CHAPTER'&&Number.isInteger(event.data.number)&&event.data.number>0)event.waitUntil(caches.open(VERSION).then(cache=>cache.add(`./chapters/${event.data.number}.json`)).catch(()=>{}));});
