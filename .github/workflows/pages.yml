@@ -1,0 +1,41 @@
+name: Publish Doc Truyen to GitHub Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unpack source uploaded through the browser
+        if: hashFiles('app-source.zip') != ''
+        run: python -m zipfile -e app-source.zip .
+      - name: Keep extracted source editable in the repository
+        if: hashFiles('app-source.zip') != ''
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dist scripts .gitignore CHAY-APP.bat README.md package.json requirements.txt
+          git rm -- app-source.zip
+          git commit -m "Import app source and story library"
+          git push
+      - name: Check JavaScript
+        run: npm run check
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
